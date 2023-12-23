@@ -156,8 +156,9 @@ end
 
 function RLBase.prob(p::PPOPolicy{<:ActorCritic,Categorical}, state::AbstractArray, mask)
     logits = p.approximator.actor(send_to_device(device(p.approximator), state))
+    mask = send_to_device(device(p.approximator), mask)
     if !isnothing(mask)
-        logits .+= ifelse.(mask, 0f0, typemin(Float32))
+        logits .= ifelse.(mask, logits, -1f20)
     end
     logits = logits |> softmax |> send_to_host
     if p.update_step < p.n_random_start
@@ -284,6 +285,7 @@ function _update!(p::PPOPolicy, t::AbstractTrajectory)
             adv = vec(advantages)[inds]
 
             ps = Flux.params(AC)
+            min_float32 = -1f20
             gs = gradient(ps) do
                 v′ = AC.critic(s) |> vec
                 if AC.actor isa GaussianNetwork
@@ -300,7 +302,7 @@ function _update!(p::PPOPolicy, t::AbstractTrajectory)
                     if isnothing(lam)
                         logit′ = raw_logit′
                     else
-                        logit′ = raw_logit′ .+ ifelse.(lam, 0.0f0, typemin(Float32))
+                        logit′ = ifelse.(lam, raw_logit′, min_float32)
                     end
                     p′ = softmax(logit′)
                     log_p′ = logsoftmax(logit′)
@@ -320,6 +322,10 @@ function _update!(p::PPOPolicy, t::AbstractTrajectory)
                     p.critic_loss[i, epoch] = critic_loss
                     p.entropy_loss[i, epoch] = entropy_loss
                     p.loss[i, epoch] = loss
+                end
+
+                if isnan(loss)
+                    @warn "loss is NaN"
                 end
 
                 loss
