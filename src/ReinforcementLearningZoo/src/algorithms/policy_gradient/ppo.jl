@@ -285,6 +285,8 @@ function _update!(p::PPOPolicy, t::AbstractTrajectory)
             r = vec(returns)[inds]
             log_p = vec(action_log_probs)[inds]
             adv = vec(advantages)[inds]
+            # normalize advantage
+            adv = (adv .- mean(adv)) ./ (std(adv) + 1f-8)
 
             ps = Flux.params(AC)
             # min_float32 = -1f20
