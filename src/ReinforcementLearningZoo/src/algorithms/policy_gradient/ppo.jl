@@ -158,7 +158,8 @@ function RLBase.prob(p::PPOPolicy{<:ActorCritic,Categorical}, state::AbstractArr
     logits = p.approximator.actor(send_to_device(device(p.approximator), state))
     mask = send_to_device(device(p.approximator), mask)
     if !isnothing(mask)
-        logits .= ifelse.(mask, logits, -1f20)
+        # logits .= ifelse.(mask, logits, -1f20)
+        logits .= ifelse.(mask, logits, nextfloat(typemin(Float32)))
     end
     logits = logits |> softmax |> send_to_host
     if p.update_step < p.n_random_start
@@ -213,6 +214,7 @@ function RLBase.update!(
 end
 
 function _update!(p::PPOPolicy, t::AbstractTrajectory)
+    @debug "updating PPO param"
     rng = p.rng
     AC = p.approximator
     γ = p.γ
@@ -285,7 +287,8 @@ function _update!(p::PPOPolicy, t::AbstractTrajectory)
             adv = vec(advantages)[inds]
 
             ps = Flux.params(AC)
-            min_float32 = -1f20
+            # min_float32 = -1f20
+            min_float32 = nextfloat(typemin(Float32))
             gs = gradient(ps) do
                 v′ = AC.critic(s) |> vec
                 if AC.actor isa GaussianNetwork
